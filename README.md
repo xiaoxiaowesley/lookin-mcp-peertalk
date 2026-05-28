@@ -1,12 +1,13 @@
 # lookin-mcp-peertalk
 
+> [中文](./README_zh.md)
+
 An MCP (Model Context Protocol) server for [Lookin](https://github.com/hughkli/Lookin) — inspect and debug iOS app UI in natural language with any LLM.
 
 Fully compatible with the official Lookin desktop client: keep using the Lookin App for visual debugging, and pair it with an LLM + MCP to query, inspect and reason about your iOS UI in plain English.
 
 Talks to iOS devices directly over the **Peertalk** protocol — no HTTP proxy in the middle. Works with USB-connected real devices and the iOS Simulator.
 
-> 中文版本: [README_zh.md](./README_zh.md)
 
 ## Prerequisites: Install LookinServer
 

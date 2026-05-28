@@ -2,7 +2,7 @@
 
 [Lookin](https://github.com/hughkli/Lookin) 的 MCP (Model Context Protocol) 版本。
 
-与 Lookin 桌面客户端完美兼容 —— 你可以继续使用 Lookin App 进行可视化调试，同时搭配 LLM + MCP，用自然语言检查和调试 iOS 应用的 UI。
+与 Lookin 桌面客户端完美兼容 —— 你可以继续使用 Lookin App 进行可视化调试，同时搭配本MCP，让LLM用自然语言检查和调试 iOS 应用的 UI（查看view层级,view信息）。
 
 通过 Peertalk 协议直接与 iOS 设备通信，无需中间 HTTP 代理，支持 USB 真机和模拟器。
 

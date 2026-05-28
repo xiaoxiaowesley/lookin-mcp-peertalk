@@ -15,7 +15,7 @@ import { AppRegistry, type InspectableApp } from "./connection/app-registry.js";
 import { DeviceManager, type DeviceInfo } from "./device-manager.js";
 import { PeertalkChannel } from "./peertalk/channel.js";
 import { LookinRequestType } from "./peertalk/frame-types.js";
-import { archive } from "./peertalk/keyed-archiver.js";
+import { archive, InlineScalar } from "./peertalk/keyed-archiver.js";
 import { scanSimulatorPorts, scanUsbPorts } from "./connection/port-scanner.js";
 import "./peertalk/schemas/index.js"; // side-effect: register all schema decoders
 
@@ -366,20 +366,35 @@ export class LookinClient {
       }
     }
 
-    // Fetch from server
-    const data = await this.connectionManager.request(
+    // Fetch from server via HierarchyDetails (supports any view, not just UIImageView)
+    const hdTask = {
+      _className: "LookinStaticAsyncUpdateTask",
+      oid: targetOid,
+      taskType: new InlineScalar(2),              // GroupScreenshot
+      clientReadableVersion: "1.0.7",
+      attrRequest: new InlineScalar(2),           // NotNeed
+      needBasisVisualInfo: new InlineScalar(false),
+      needSubitems: new InlineScalar(false),
+    };
+    const hdPkg = {
+      _className: "LookinStaticAsyncUpdateTasksPackage",
+      tasks: [hdTask],
+    };
+
+    const chunks = await this.connectionManager.request(
       this.activePortKey!,
-      LookinRequestType.FetchImageViewImage,
-      targetOid
+      LookinRequestType.HierarchyDetails,
+      [hdPkg]
     );
 
-    if (data && Buffer.isBuffer(data)) {
-      const format = detectFormat(data);
-      return this.bufferToResult(data, format);
-    }
-
-    if (data && typeof data === "object" && Buffer.isBuffer((data as any).imageData)) {
-      return this.imageDataToResult(data as LookinImageData);
+    // Flatten multi-frame response
+    const allDetails = Array.isArray(chunks) ? chunks.flat() : [chunks];
+    const detail = allDetails.find((d: any) => d?.displayItemOid === targetOid);
+    if (detail) {
+      const img = detail.groupScreenshot ?? detail.soloScreenshot;
+      if (img) {
+        return this.imageDataToResult(img);
+      }
     }
 
     throw new Error(`No screenshot available for oid ${targetOid}`);

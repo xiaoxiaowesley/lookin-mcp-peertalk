@@ -26,6 +26,7 @@ import { PeertalkChannel } from "../src/peertalk/channel.js";
 import { ConnectionManager } from "../src/connection/manager.js";
 import { scanSimulatorPorts } from "../src/connection/port-scanner.js";
 import { LookinRequestType } from "../src/peertalk/frame-types.js";
+import { InlineScalar } from "../src/peertalk/keyed-archiver.js";
 import "../src/peertalk/schemas/index.js"; // register decoders
 import type { LookinAppInfo } from "../src/peertalk/schemas/LookinAppInfo.js";
 import type { LookinHierarchyInfo } from "../src/peertalk/schemas/LookinHierarchyInfo.js";
@@ -79,21 +80,54 @@ function countNodes(items: LookinDisplayItem[]): number {
   return n;
 }
 
-/** Find the first node at the deepest reachable level (or any leaf). */
-function findDeepLeafOid(items: LookinDisplayItem[]): number | null {
+/**
+ * Find a suitable node for screenshot testing.
+ * Prefer nodes that are visible, have a non-zero frame, and shouldCaptureImage=true.
+ * Target moderate depth (3-6) rather than the deepest leaf.
+ */
+function findScreenshotTarget(items: LookinDisplayItem[]): number | null {
   let bestOid: number | null = null;
-  let bestDepth = -1;
+  let bestScore = -1;
 
   function walk(it: LookinDisplayItem, depth: number) {
     const oid = it.viewObject?.oid ?? it.layerObject?.oid;
-    if (typeof oid === "number" && depth > bestDepth) {
+    if (typeof oid !== "number") {
+      for (const c of it.subitems ?? []) walk(c, depth + 1);
+      return;
+    }
+
+    let score = 0;
+    // Prefer shouldCaptureImage nodes
+    if (it.shouldCaptureImage) score += 10;
+    // Prefer visible nodes
+    if (!it.isHidden && it.alpha > 0) score += 5;
+    // Prefer nodes with non-zero frame
+    const f = it.frame;
+    if (f && f.width > 10 && f.height > 10) score += 5;
+    // Prefer moderate depth (3-6)
+    if (depth >= 3 && depth <= 6) score += 3;
+    // Slightly penalize very deep nodes
+    if (depth > 10) score -= 2;
+
+    if (score > bestScore) {
+      bestScore = score;
       bestOid = oid;
-      bestDepth = depth;
     }
     for (const c of it.subitems ?? []) walk(c, depth + 1);
   }
   for (const it of items) walk(it, 1);
   return bestOid;
+}
+
+function findItemByOid(arr: LookinDisplayItem[], oid: number): LookinDisplayItem | null {
+  for (const it of arr) {
+    const o = it.viewObject?.oid ?? it.layerObject?.oid;
+    if (o === oid) return it;
+    const sub = it.subitems ?? [];
+    const f = findItemByOid(sub, oid);
+    if (f) return f;
+  }
+  return null;
 }
 
 function detectImageFormat(buf: Buffer): "png" | "jpeg" | "unknown" {
@@ -229,41 +263,63 @@ async function main(): Promise<void> {
     }
     ok(`depth=${depth} satisfies the >=5 expectation`);
 
-    // Step 7 — pick a node and fetch its screenshot
-    step("Pick a deep leaf and fetch its screenshot");
-    const targetOid = findDeepLeafOid(items);
+    // Step 7 — pick a node and fetch its screenshot via HierarchyDetails
+    step("Pick a deep leaf and fetch its screenshot (HierarchyDetails)");
+    const targetOid = findScreenshotTarget(items);
     if (targetOid == null) {
       fail("could not locate any oid in the hierarchy");
     }
     info(`target oid = ${targetOid}`);
 
-    let shotRaw: any = null;
+    // Build HierarchyDetails task payload
+    const task = {
+      _className: "LookinStaticAsyncUpdateTask",
+      oid: targetOid,
+      taskType: new InlineScalar(2),               // GroupScreenshot
+      clientReadableVersion: "1.0.7",
+      attrRequest: new InlineScalar(2),            // NotNeed
+      needBasisVisualInfo: new InlineScalar(false),
+      needSubitems: new InlineScalar(false),
+    };
+    const pkg = {
+      _className: "LookinStaticAsyncUpdateTasksPackage",
+      tasks: [task],
+    };
+
+    let detailChunks: any = null;
     try {
-      shotRaw = await cm.request(
+      detailChunks = await cm.request(
         portKey,
-        LookinRequestType.FetchImageViewImage,
-        targetOid!
+        LookinRequestType.HierarchyDetails,
+        [pkg]
       );
     } catch (e) {
-      // FetchImageViewImage can be unsupported on some node types — fall back to cached.
-      info(
-        `FetchImageViewImage failed (${(e as Error).message}); falling back to cached screenshot`
-      );
+      fail("HierarchyDetails request failed", e);
     }
 
-    // Locate the matching item to consult its cached screenshot if needed.
-    function findItemByOid(arr: LookinDisplayItem[], oid: number): LookinDisplayItem | null {
-      for (const it of arr) {
-        const o = it.viewObject?.oid ?? it.layerObject?.oid;
-        if (o === oid) return it;
-        const sub = it.subitems ?? [];
-        const f = findItemByOid(sub, oid);
-        if (f) return f;
+    // Multi-frame response: flatten chunks to find our detail
+    const details = Array.isArray(detailChunks)
+      ? detailChunks.flat()
+      : [detailChunks];
+    const detail = details.find((d: any) => d?.displayItemOid === targetOid);
+
+    let extracted: { buf: Buffer; source: string } | null = null;
+    if (detail) {
+      const img = detail.groupScreenshot ?? detail.soloScreenshot;
+      if (img && Buffer.isBuffer(img.imageData)) {
+        extracted = { buf: img.imageData, source: "HierarchyDetails" };
       }
-      return null;
     }
-    const matched = findItemByOid(items, targetOid!);
-    const extracted = extractScreenshotBuffer(matched, shotRaw);
+
+    // Fallback: cached screenshot from hierarchy
+    if (!extracted) {
+      const matched = findItemByOid(items, targetOid!);
+      const cand = matched?.groupScreenshot ?? matched?.soloScreenshot;
+      if (cand && Buffer.isBuffer(cand.imageData)) {
+        extracted = { buf: cand.imageData, source: "cached-displayItem" };
+      }
+    }
+
     if (!extracted) {
       fail(`no screenshot available for oid ${targetOid}`);
     }

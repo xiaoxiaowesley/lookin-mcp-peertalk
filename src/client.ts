@@ -339,14 +339,18 @@ export class LookinClient {
 
     let targetOid = oid;
 
-    // If no oid specified, use root window from hierarchy
+    // If no oid specified, use smart selection from hierarchy
     if (targetOid === undefined) {
       if (!this.cachedHierarchy) {
         await this.getHierarchy();
       }
       if (this.cachedHierarchy && this.cachedHierarchy.displayItems.length > 0) {
-        const rootItem = this.cachedHierarchy.displayItems[0];
-        targetOid = rootItem.viewObject?.oid ?? rootItem.layerObject?.oid ?? 0;
+        targetOid = this.findScreenshotTarget(this.cachedHierarchy.displayItems) ?? undefined;
+        if (targetOid == null) {
+          // Fallback to root window oid
+          const rootItem = this.cachedHierarchy.displayItems[0];
+          targetOid = rootItem.viewObject?.oid ?? rootItem.layerObject?.oid ?? 0;
+        }
       } else {
         throw new Error("No views found in hierarchy");
       }
@@ -460,6 +464,34 @@ export class LookinClient {
         }
       }
     }
+  }
+
+  /**
+   * Score hierarchy items to find the best screenshot target.
+   * Prefers visible nodes with shouldCaptureImage=true at moderate depth.
+   */
+  private findScreenshotTarget(items: LookinDisplayItem[]): number | null {
+    let bestOid: number | null = null;
+    let bestScore = -1;
+
+    const walk = (it: LookinDisplayItem, depth: number) => {
+      const oid = it.viewObject?.oid ?? it.layerObject?.oid;
+      if (typeof oid !== "number") {
+        for (const c of it.subitems ?? []) walk(c, depth + 1);
+        return;
+      }
+      let score = 0;
+      if (it.shouldCaptureImage) score += 10;
+      if (!it.isHidden && it.alpha > 0) score += 5;
+      const f = it.frame;
+      if (f && f.width > 10 && f.height > 10) score += 5;
+      if (depth >= 3 && depth <= 6) score += 3;
+      if (depth > 10) score -= 2;
+      if (score > bestScore) { bestScore = score; bestOid = oid; }
+      for (const c of it.subitems ?? []) walk(c, depth + 1);
+    };
+    for (const it of items) walk(it, 1);
+    return bestOid;
   }
 
   private imageDataToResult(imgData: LookinImageData): ScreenshotResult {

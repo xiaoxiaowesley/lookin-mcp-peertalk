@@ -1,24 +1,26 @@
 # lookin-mcp-peertalk
 
-[Lookin](https://github.com/hughkli/Lookin) 的 MCP (Model Context Protocol) 版本。
+An MCP (Model Context Protocol) server for [Lookin](https://github.com/hughkli/Lookin) — inspect and debug iOS app UI in natural language with any LLM.
 
-与 Lookin 桌面客户端完美兼容 —— 你可以继续使用 Lookin App 进行可视化调试，同时搭配 LLM + MCP，用自然语言检查和调试 iOS 应用的 UI。
+Fully compatible with the official Lookin desktop client: keep using the Lookin App for visual debugging, and pair it with an LLM + MCP to query, inspect and reason about your iOS UI in plain English.
 
-通过 Peertalk 协议直接与 iOS 设备通信，无需中间 HTTP 代理，支持 USB 真机和模拟器。
+Talks to iOS devices directly over the **Peertalk** protocol — no HTTP proxy in the middle. Works with USB-connected real devices and the iOS Simulator.
 
-## Prerequisites: 安装 LookinServer
+> 中文版本: [README_zh.md](./README_zh.md)
 
-你的 iOS 应用需要集成 [LookinServer](https://github.com/QMUI/LookinServer) SDK。请选择以下任一方式：
+## Prerequisites: Install LookinServer
+
+Your iOS app must integrate the [LookinServer](https://github.com/QMUI/LookinServer) SDK. Pick either of the following:
 
 ### CocoaPods
 
-**Swift 项目：**
+**Swift project:**
 
 ```ruby
 pod 'LookinServer', :subspecs => ['Swift'], :configurations => ['Debug']
 ```
 
-**Objective-C 项目：**
+**Objective-C project:**
 
 ```ruby
 pod 'LookinServer', :configurations => ['Debug']
@@ -26,27 +28,27 @@ pod 'LookinServer', :configurations => ['Debug']
 
 ### Swift Package Manager
 
-添加以下仓库地址：
+Add the following repository:
 
 ```
 https://github.com/QMUI/LookinServer/
 ```
 
-> 注意：仅在 Debug 配置下引入，避免影响 Release 包体积。
+> Note: only integrate it in the Debug configuration to avoid bloating your Release binary.
 
-## 安装 MCP
+## Install the MCP server
 
-### 方式一：npx（推荐）
+### Option 1: npx (recommended)
 
-**Claude Code：**
+**Claude Code:**
 
 ```bash
 claude mcp add --scope user lookin-peertalk -- npx -y lookin-mcp-peertalk
 ```
 
-**Claude Desktop / Cursor 等 MCP 客户端：**
+**Claude Desktop / Cursor and other MCP clients:**
 
-在 MCP 配置文件中添加：
+Add the following entry to your MCP config file:
 
 ```json
 {
@@ -59,7 +61,7 @@ claude mcp add --scope user lookin-peertalk -- npx -y lookin-mcp-peertalk
 }
 ```
 
-### 方式二：从源码构建
+### Option 2: Build from source
 
 ```bash
 git clone https://github.com/nicklxz/lookin-mcp-peertalk.git
@@ -68,7 +70,7 @@ npm install
 npm run build
 ```
 
-然后在 MCP 配置文件中添加：
+Then register it in your MCP config file:
 
 ```json
 {
@@ -81,7 +83,7 @@ npm run build
 }
 ```
 
-### 方式三：开发模式（无需编译）
+### Option 3: Development mode (no build step)
 
 ```json
 {
@@ -94,80 +96,80 @@ npm run build
 }
 ```
 
-## 可用工具
+## Available tools
 
-安装完成后，LLM 可以使用以下 6 个工具来检查 iOS 应用：
+Once installed, the LLM can use the following 6 tools to inspect your iOS app:
 
 ### `lookin_list_devices`
 
-列出所有可连接的 iOS 设备（USB 真机和模拟器）。
+List all connectable iOS devices (USB real devices and simulators).
 
-- **参数**：无
-- **返回**：设备列表，包含设备类型和标识信息
+- **Arguments**: none
+- **Returns**: a list of devices with their type and identifier
 
 ### `lookin_list_apps`
 
-列出所有正在运行 LookinServer 的应用。
+List all running apps that have LookinServer integrated.
 
-- **参数**：无
-- **返回**：应用列表，包含 `portKey`、`appName`、`bundleId` 等信息
+- **Arguments**: none
+- **Returns**: a list of apps including `portKey`, `appName`, `bundleId`, etc.
 
 ### `lookin_connect_app`
 
-连接到指定的 iOS 应用。
+Connect to a specific iOS app.
 
-- **参数**：
-  - `portKey` (string, 必填) — 来自 `lookin_list_apps` 返回的应用标识
-- **返回**：连接结果，包含应用基本信息
+- **Arguments**:
+  - `portKey` (string, required) — the app identifier returned by `lookin_list_apps`
+- **Returns**: the connection result, including basic app info
 
 ### `lookin_get_hierarchy`
 
-获取已连接应用的视图层级树。
+Fetch the view hierarchy tree of the currently connected app.
 
-- **参数**：
-  - `maxDepth` (number, 可选) — 限制返回的层级深度，不传则返回完整层级
-- **返回**：JSON 格式的视图树，每个节点包含 `oid`、`className`、`frame`（[x, y, w, h]）、`children` 等字段
+- **Arguments**:
+  - `maxDepth` (number, optional) — limit the depth of the returned tree; omit to get the full hierarchy
+- **Returns**: a JSON view tree where each node contains `oid`, `className`, `frame` (`[x, y, w, h]`), `children`, etc.
 
 ### `lookin_get_attributes`
 
-查询指定视图的详细属性。
+Fetch detailed attributes for a specific view.
 
-- **参数**：
-  - `oid` (number, 必填) — 视图的对象 ID，来自 `lookin_get_hierarchy` 的返回结果
-- **返回**：按分组归类的属性列表，包含 bounds、backgroundColor、font 等详细信息
+- **Arguments**:
+  - `oid` (number, required) — the object ID of the view, taken from `lookin_get_hierarchy`
+- **Returns**: a grouped list of attributes including bounds, backgroundColor, font, and many more
 
 ### `lookin_get_screenshot`
 
-截取指定视图的截图。
+Take a screenshot of a specific view.
 
-- **参数**：
-  - `oid` (number, 可选) — 视图的对象 ID。不传则截取根窗口
-- **返回**：base64 编码的 PNG 图片数据
+- **Arguments**:
+  - `oid` (number, optional) — the object ID of the view; if omitted, captures the root window
+- **Returns**: PNG image data, base64 encoded
 
-## 使用示例
+## Usage examples
 
-### 分步调用
+### Step-by-step
 
-1. **列出设备** — 使用 `lookin_list_devices` 查看可用设备
-2. **列出应用** — 使用 `lookin_list_apps` 列出正在运行 LookinServer 的应用
-3. **连接应用** — 使用 `lookin_connect_app` 连接到目标应用（传入步骤 2 返回的 `portKey`）
-4. **获取视图层级** — 使用 `lookin_get_hierarchy` 获取当前应用的视图层级树
-5. **查看属性** — 使用 `lookin_get_attributes` 查询某个视图的属性（传入步骤 4 中的 `oid`）
-6. **获取截图** — 使用 `lookin_get_screenshot` 截取某个视图的截图（传入步骤 4 中的 `oid`）
+1. **List devices** — call `lookin_list_devices` to see what's available
+2. **List apps** — call `lookin_list_apps` to find apps running LookinServer
+3. **Connect** — call `lookin_connect_app` with the `portKey` from step 2
+4. **Get the view hierarchy** — call `lookin_get_hierarchy`
+5. **Inspect attributes** — call `lookin_get_attributes` with an `oid` from step 4
+6. **Take a screenshot** — call `lookin_get_screenshot` with an `oid` from step 4
 
-**调用流程：**
+**Typical flow:**
 
 ```
 list_devices → list_apps → connect_app → get_hierarchy → get_attributes / get_screenshot
 ```
 
-### 自然语言调用（推荐）
+### Natural language (recommended)
 
-直接用自然语言描述你的需求，LLM 会自动编排工具调用：
+Just describe what you want in natural language and let the LLM orchestrate the tool calls:
 
-> "帮我连接到正在运行的 iOS 应用，然后获取它的视图层级，找到一个 UILabel 并查看它的属性和截图"
+> "Connect to the iOS app that's currently running, fetch its view hierarchy, find a UILabel, then show me its attributes and a screenshot."
 
-LLM 会自动按顺序调用 `list_devices` → `list_apps` → `connect_app` → `get_hierarchy` → `get_attributes` → `get_screenshot`，一个流程覆盖所有工具。
+The LLM will chain `list_devices` → `list_apps` → `connect_app` → `get_hierarchy` → `get_attributes` → `get_screenshot` automatically — one prompt, the whole flow.
 
 ## License
 
